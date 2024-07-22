@@ -63,25 +63,25 @@ function globals_only_backups()
 compare_databases() {
   db_name="$1" #$db_name name of the original database
   TEMP_DB_NAME="$2" #$TEMP_DB_NAME tomporary database created using the backup file
-  echo "database name= $db_name and test database= $TEMP_DB_NAME"
-  # Compare schema from mater DB to replica test DB using pg_dump -s, excluding analytics table and table owner backing up in plain text
+  echo "database name= $BACKUP_SOURCE_DB_HOST_NAME ($db_name) and test database= $BACKUP_TEST_DB_HOST_NAME ($TEMP_DB_NAME)"
+  # Compare schema from master DB to replica test DB using pg_dump -s, excluding analytics table and table owner backing up in plain text
   # schema_diff=$(pg_dump -s -h $BACKUP_SOURCE_DB_HOST_NAME -U $POSTGRES_USER -O -Fp $db_name $EXCLUDED| diff -U0 -  <(pg_dump -s -h $BACKUP_SOURCE_DB_HOST_NAME -U $POSTGRES_USER -O -Fp $TEMP_DB_NAME $EXCLUDED))
   schema_diff=$(pg_dump -s -h $BACKUP_SOURCE_DB_HOST_NAME -U $POSTGRES_USER -O -Fp $db_name $EXCLUDED| diff -U0 -  <(pg_dump -s -h $BACKUP_TEST_DB_HOST_NAME -U $POSTGRES_USER -O -Fp $TEMP_DB_NAME $EXCLUDED))
-  #schema_diff=$(pg_dump -s -h $BACKUP_SOURCE_DB_HOST_NAME -U $POSTGRES_USER $db_name | diff -U0 $TEMP_DB_NAME)
+  
   echo "differences between the 2 DB schema_diff=$schema_diff"
   if [[ -z "$schema_diff" ]]; then
-    echo "Schema of $db_name and $TEMP_DB_NAME are identical."
+    echo "Good! Schema of $BACKUP_SOURCE_DB_HOST_NAME ($db_name) and $BACKUP_TEST_DB_HOST_NAME ($TEMP_DB_NAME) are identical."
     if [[ $LOG_LEVEL == "all" ]]; then
       # Add logic to send notification about successful/failed tests (modify as needed)
-      MESSAGE="Schema of $db_name and $TEMP_DB_NAME are identical."
+      MESSAGE="Good! Schema of $BACKUP_SOURCE_DB_HOST_NAME ($db_name) and $BACKUP_TEST_DB_HOST_NAME ($TEMP_DB_NAME) are identical."
       wget --header='Content-Type:application/json' \
                 --post-data="{\"channel\": \"$CHANNEL\", \"username\": \"StandupBot\", \"text\": \"$MESSAGE\", \"icon_emoji\": \":scream:\"}" \
                 $WEBHOOK
     fi
   else
-    echo "WARNING: Schema differences found between $db_name and $TEMP_DB_NAME:"
+    echo "WARNING: Schema differences found between $BACKUP_SOURCE_DB_HOST_NAME ($db_name) and $BACKUP_TEST_DB_HOST_NAME ($TEMP_DB_NAME):"
     echo "$schema_diff"
-    MESSAGE="WARNING: Schema differences found between $db_name and $TEMP_DB_NAME !! Please check!"
+    MESSAGE="WARNING: Schema differences found between $BACKUP_SOURCE_DB_HOST_NAME ($db_name) and $BACKUP_TEST_DB_HOST_NAME ($TEMP_DB_NAME) !! Please check!"
     wget --header='Content-Type:application/json' \
                 --post-data="{\"channel\": \"$CHANNEL\", \"username\": \"StandupBot\", \"text\": \"$MESSAGE\", \"icon_emoji\": \":scream:\"}" \
                 $WEBHOOK
@@ -93,25 +93,29 @@ compare_databases() {
   for table in $tables; do
     # Get row count from both databases
     count1=$(psql -h $BACKUP_SOURCE_DB_HOST_NAME -U $POSTGRES_USER -d $db_name -q -t -c "SELECT count(*) FROM $table;")
-    count2=$(psql -h $BACKUP_SOURCE_DB_HOST_NAME -U $POSTGRES_USER -d $TEMP_DB_NAME -q -t -c "SELECT count(*) FROM $table;")
+    count2=$(psql -h $BACKUP_TEST_DB_HOST_NAME -U $POSTGRES_USER -d $TEMP_DB_NAME -q -t -c "SELECT count(*) FROM $table;")
     if [[ "$count1" != "$count2" ]]; then
-      echo "WARNING: backup integrity test error - Row count mismatch for table $table in $db_name ($count1) and $TEMP_DB_NAME ($count2)."
-      MESSAGE="WARNING- backup integrity test error - Row count mismatch for table $table in $db_name ($count1) and $TEMP_DB_NAME ($count2)."
+      echo "WARNING: backup integrity test error - Row count mismatch for table $table in $BACKUP_SOURCE_DB_HOST_NAME - $db_name ($count1) and $BACKUP_TEST_DB_HOST_NAME - $TEMP_DB_NAME ($count2)."
+      MESSAGE="WARNING- backup integrity test error - Row count mismatch for table $table in $BACKUP_SOURCE_DB_HOST_NAME - $db_name ($count1) and $BACKUP_TEST_DB_HOST_NAME - $TEMP_DB_NAME ($count2)."
       wget --header='Content-Type:application/json' \
                 --post-data="{\"channel\": \"$CHANNEL\", \"username\": \"StandupBot\", \"text\": \"$MESSAGE\", \"icon_emoji\": \":scream:\"}" \
                 $WEBHOOK
     else
-      echo "$dt - backup integrity test: Row count match for table $table in $db_name ($count1) and $TEMP_DB_NAME ($count2)."
+      echo "$dt - backup integrity test: Row count match for table $table in $BACKUP_SOURCE_DB_HOST_NAME - $db_name ($count1) and $BACKUP_TEST_DB_HOST_NAME - $TEMP_DB_NAME ($count2)."
      
       if [[ $LOG_LEVEL == "all" ]]; then
         # Add logic to send notification about successful/failed tests (modify as needed)
-        MESSAGE="Good news - Row count match for table $table in $db_name ($count1) and $TEMP_DB_NAME ($count2)."
+        MESSAGE="Good news - Row count match for table $table in $BACKUP_SOURCE_DB_HOST_NAME - $db_name ($count1) and $BACKUP_TEST_DB_HOST_NAME - $TEMP_DB_NAME ($count2)."
         wget --header='Content-Type:application/json' \
-                --post-data="{\"channel\": \"$CHANNEL\", \"username\": \"StandupBot\", \"text\": \"$MESSAGE\", \"icon_emoji\": \":scream:\"}" \
+                --post-data="{\"channel\": \"$CHANNEL\", \"username\": \"StandupBot\", \"text\": \"$MESSAGE\"}" \
                 $WEBHOOK
       fi
     fi
   done
+  # Clean up temporary database
+  echo "Dropping temporary database: $TEMP_DB_NAME"
+  #dropdb -h $BACKUP_SOURCE_DB_HOST_NAME -U $POSTGRES_USER $TEMP_DB_NAME
+  dropdb -h $BACKUP_TEST_DB_HOST_NAME -U $POSTGRES_USER $TEMP_DB_NAME &>/dev/null || true
 }
 
 #=======================================================
@@ -120,7 +124,7 @@ compare_databases() {
 test_backup() {
   backup_file="$1"
   db_name="$2"
-  echo "$dt Backup file testing started - $1 against $2"
+  echo "$dt Backup file testing started - File $1 against database $BACKUP_TEST_DB_HOST_NAME ($2)"
   # Extract filename without path
   filename=$(basename "$backup_file")
 
@@ -132,14 +136,14 @@ test_backup() {
   
   # Drop and recreate temporary database
   echo "Dropping and recreating temporary database: $TEMP_DB_NAME"
-  dropdb -h $BACKUP_SOURCE_DB_HOST_NAME -U $POSTGRES_USER $TEMP_DB_NAME &>/dev/null || true
-  createdb -h $BACKUP_SOURCE_DB_HOST_NAME -U $POSTGRES_USER $TEMP_DB_NAME
+  dropdb -h $BACKUP_TEST_DB_HOST_NAME -U $POSTGRES_USER $TEMP_DB_NAME &>/dev/null || true
+  createdb -h $BACKUP_TEST_DB_HOST_NAME -U $POSTGRES_USER $TEMP_DB_NAME
 
   # Restore backup to temporary database
-  echo "Restoring backup $filename to temporary database: $TEMP_DB_NAME"
+  echo "Restoring backup $filename to temporary database: $BACKUP_TEST_DB_HOST_NAME ($TEMP_DB_NAME)"
 
   # Uncompress the backup file and pipe the output to psql for restoration
-  gunzip -c "$backup_file" | psql -h $BACKUP_SOURCE_DB_HOST_NAME -U $POSTGRES_USER -d $TEMP_DB_NAME
+  gunzip -c "$backup_file" | psql -h $BACKUP_TEST_DB_HOST_NAME -U $POSTGRES_USER -d $TEMP_DB_NAME
 
   if [[ $? -eq 0 ]]; then
     echo "Backup $filename restored successfully."
@@ -151,11 +155,8 @@ test_backup() {
     fi
     # Compare schema and data
     compare_databases $db_name $TEMP_DB_NAME
-    
-    # Clean up temporary database
-    echo "Dropping temporary database: $TEMP_DB_NAME"
-    #dropdb -h $BACKUP_SOURCE_DB_HOST_NAME -U $POSTGRES_USER $TEMP_DB_NAME
-    dropdb -h $BACKUP_SOURCE_DB_HOST_NAME -U $POSTGRES_USER $TEMP_DB_NAME &>/dev/null || true
+   
+
   else
     echo "ERROR: Failed to restore backup $filename!"
     MESSAGE="ERROR: Backup integrity test - Failed to restore backup $filename."
