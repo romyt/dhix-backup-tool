@@ -181,7 +181,7 @@ function perform_backups()
 
     for DBNAME in $DBLIST
     do
-        if ! [ "$DBNAME" = "postgres" ]; then
+        if ! [ "$DBNAME" = "postgres" ] && ! [ "$DBNAME" = "$TEMP_DB_NAME" ]; then
             FINAL_BACKUP_DIR=$BACKUP_DIR/$DBNAME/backup"`date +\%Y-\%m-\%d`-$SUFFIX/"
             if ! mkdir -p $FINAL_BACKUP_DIR; then
                 echo "$dt - Cannot create backup directory in $FINAL_BACKUP_DIR. Go and fix it!"
