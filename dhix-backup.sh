@@ -235,7 +235,7 @@ function perform_backups()
 cleanup() {
   prefix="$1"
   exp_days=$(expiration_days "$prefix")
-  echo "Cleaning up folder with prefix $prefix and expiration days $exp_days"
+  echo "Cleaning up folder with prefix $prefix and expiration hours/days $exp_days"
 
   DBLIST=$(psql -p 5432 -h $BACKUP_SOURCE_DB_HOST_NAME -U $POSTGRES_USER -d postgres -q -t -c \
         "select datname from pg_database where not datistemplate" | grep '\S' | awk '{print $1}')
