@@ -95,7 +95,7 @@ compare_databases() {
     count1=$(psql -h $BACKUP_SOURCE_DB_HOST_NAME -U $POSTGRES_USER -d $db_name -q -t -c "SELECT count(*) FROM $table;")
     count2=$(psql -h $BACKUP_TEST_DB_HOST_NAME -U $POSTGRES_USER -d $TEMP_DB_NAME -q -t -c "SELECT count(*) FROM $table;")
     if [[ "$count1" != "$count2" ]]; then
-      echo "WARNING- backup integrity test error - Row count mismatch for table $table in $BACKUP_SOURCE_DB_HOST_NAME - $db_name ($count1) and $BACKUP_TEST_DB_HOST_NAME - $TEMP_DB_NAME ($count2)."
+      echo "WARNING! backup integrity test error, Row count mismatch for table $table in $BACKUP_SOURCE_DB_HOST_NAME.$db_name ($count1) and $BACKUP_TEST_DB_HOST_NAME.$TEMP_DB_NAME ($count2)."
       MESSAGE="WARNING backup integrity test error! Row count mismatch for table $table in $BACKUP_SOURCE_DB_HOST_NAME.$db_name($count1) and $BACKUP_TEST_DB_HOST_NAME.$TEMP_DB_NAME($count2)."
       wget --header='Content-Type:application/json' \
                 --post-data="{\"channel\": \"$CHANNEL\", \"username\": \"StandupBot\", \"text\": \"$MESSAGE\", \"icon_emoji\": \":scream:\"}" \
@@ -105,7 +105,7 @@ compare_databases() {
      
       if [[ $LOG_LEVEL == "all" ]]; then
         # Add logic to send notification about successful/failed tests (modify as needed)
-        MESSAGE="Good news! Row count match for table $table in $BACKUP_SOURCE_DB_HOST_NAME - $db_name ($count1) and $BACKUP_TEST_DB_HOST_NAME - $TEMP_DB_NAME ($count2)."
+        MESSAGE="Good! $table Row count match for $BACKUP_SOURCE_DB_HOST_NAME.$db_name($count1) and $BACKUP_TEST_DB_HOST_NAME.$TEMP_DB_NAME($count2)."
         wget --header='Content-Type:application/json' \
                 --post-data="{\"channel\": \"$CHANNEL\", \"username\": \"StandupBot\", \"text\": \"$MESSAGE\"}" \
                 $WEBHOOK
@@ -148,7 +148,7 @@ test_backup() {
   if [[ $? -eq 0 ]]; then
     echo "Backup $filename restored successfully."
     if [ "$LOG_LEVEL" = "all" ]; then
-      MESSAGE="Backup integrity test- Backup $filename restored successfully."
+      MESSAGE="Backup integrity test, Backup $filename restored successfully."
       wget --header='Content-Type:application/json' \
                 --post-data="{\"channel\": \"$CHANNEL\", \"username\": \"StandupBot\", \"text\": \"$MESSAGE\", \"icon_emoji\": \":scream:\"}" \
                 $WEBHOOK
@@ -159,7 +159,7 @@ test_backup() {
 
   else
     echo "ERROR: Failed to restore backup $filename!"
-    MESSAGE="ERROR - Backup integrity test - Failed to restore backup $filename."
+    MESSAGE="ERROR! Failed to restore backup $filename."
     wget --header='Content-Type:application/json' \
                 --post-data="{\"channel\": \"$CHANNEL\", \"username\": \"StandupBot\", \"text\": \"$MESSAGE\", \"icon_emoji\": \":scream:\"}" \
                 $WEBHOOK
@@ -216,7 +216,7 @@ function perform_backups()
                 filesize=`wc -c $FINAL_BACKUP_DIR$filename`
                 echo "$dt - DB backup completed for database $DBNAME into file: $filename";
                 if [ "$LOG_LEVEL" = "all" ]; then
-                    MESSAGE="$dt - DB backup completed for database $DBNAME into $filename The size $filesize(ko)"
+                    MESSAGE="$dt DB backup completed for database $DBNAME into $filename The size $filesize(ko)"
                     wget --header='Content-Type:application/json' \
                     --post-data="{\"channel\": \"$CHANNEL\", \"username\": \"StandupBot\", \"text\": \"$MESSAGE\", \"icon_emoji\": \":raised_hands:\"}" \
                     $WEBHOOK
@@ -249,7 +249,7 @@ cleanup() {
       if ! find "$dir_to_clean" -type f -mtime +"$exp_days" -name "*$prefix" -delete; then
         echo "Failed to delete expired $prefix backups in $dir_to_clean"
         OUTPUT= "$(find $dir_to_clean -type f -mtime +$exp_days -name *$prefix -delete;)"
-        MESSAGE="$dt - [!!ERROR!!] Failed to delete expired backups $OUTPUT"
+        MESSAGE="$dt [!!ERROR!!] Failed to delete expired backups $OUTPUT"
         echo "$dt - [!!ERROR!!] Failed to delete expired backups output: $OUTPUT"
         wget --header='Content-Type:application/json' \
         --post-data="{\"channel\": \"$CHANNEL\", \"username\": \"StandupBot\", \"text\": \"$MESSAGE\", \"icon_emoji\": \":scream:\"}" \
@@ -304,7 +304,7 @@ fi
 # Check for hourly backups
 if [[ $DAILY_BACKUP_TIME != $current_time ]]; then  # Corrected check for non-Sunday daily backups
   perform_backups "hourly"
-  #cleanup "hourly"
+  cleanup "hourly"
 
   exit 0
 fi
