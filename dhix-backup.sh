@@ -34,8 +34,9 @@ EXPIRED_HOURS=`expr $((($HOURS_TO_KEEP) + 1))`
 EXPIRED_DAYS=`expr $((($DAYS_TO_KEEP) + 1))`
 EXPIRED_WEEKS=`expr $((($WEEKS_TO_KEEP * 7) + 1))`
 EXPIRED_MONTHS=`expr $((($MONTHS_TO_KEEP * 30) + 5))`
-EXCLUDED="-T aggregated* -T analytics* -T completeness*"
-TEMP_DB_NAME="test_db"  # Name for temporary database to restore to
+#EXCLUDED="-T aggregated* -T analytics* -T completeness*"
+EXCLUDED="-T analytics* -T completeness*"
+TEMP_DB_NAME="test_db"  # Name for temporary dat abase to restore to
 POSTGRES_USER=$POSTGRES_USER  # Adjust username if needed
 
 # Function to calculate expiration days based on retention period
