@@ -233,6 +233,7 @@ function perform_backups()
 # Cleanup function with improved error handling      #
 #=====================================================
 cleanup() {
+
   prefix="$1"
   exp_days=$(expiration_days "$prefix")
   echo "Cleaning up folder with prefix $prefix and expiration hours/days $exp_days"
@@ -243,15 +244,19 @@ cleanup() {
   for DBNAME in $DBLIST; do
     if [[ "$DBNAME" != "postgres" ]]; then
       dir_to_clean="$BACKUP_DIR/$DBNAME"
-      if ! find "$dir_to_clean" -type d -maxdepth 1 -mtime "$exp_days" -name "*$prefix" -delete; then
-          echo "Failed to delete expired backups in $dir_to_clean"
-          OUTPUT= "$(find $dir_to_clean -type d -maxdepth 1 -mtime $exp_days -name "*$prefix" -exec rm -rf {} \;)"
-          MESSAGE="$dt - [!!ERROR!!] Failed to delete expired backups $OUTPUT"
-          echo "$dt - [!!ERROR!!] Failed to delete expired backups output: $OUTPUT"
-          wget --header='Content-Type:application/json' \
-          --post-data="{\"channel\": \"$CHANNEL\", \"username\": \"StandupBot\", \"text\": \"$MESSAGE\", \"icon_emoji\": \":scream:\"}" \
-                    $WEBHOOK
+
+      # Find files older than `exp_days` days and delete them
+      if ! find "$dir_to_clean" -type f -mtime +"$exp_days" -name "*$prefix" -delete; then
+        echo "Failed to delete expired $prefix backups in $dir_to_clean"
+        OUTPUT= "$(find $dir_to_clean -type f -mtime +$exp_days -name *$prefix -delete;)"
+        MESSAGE="$dt - [!!ERROR!!] Failed to delete expired backups $OUTPUT"
+        echo "$dt - [!!ERROR!!] Failed to delete expired backups output: $OUTPUT"
+        wget --header='Content-Type:application/json' \
+        --post-data="{\"channel\": \"$CHANNEL\", \"username\": \"StandupBot\", \"text\": \"$MESSAGE\", \"icon_emoji\": \":scream:\"}" \
+                  $WEBHOOK
       fi
+      # Find empty directories and delete them
+      find "$dir_to_clean" -type d -empty -delete
     fi
   done
   echo "Old backup files deleted for prefix: $prefix"
@@ -299,7 +304,7 @@ fi
 # Check for hourly backups
 if [[ $DAILY_BACKUP_TIME != $current_time ]]; then  # Corrected check for non-Sunday daily backups
   perform_backups "hourly"
-  cleanup "hourly"
+  #cleanup "hourly"
 
   exit 0
 fi
