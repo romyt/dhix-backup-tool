@@ -77,15 +77,15 @@ compare_databases() {
       MESSAGE="Good! Schema of $BACKUP_SOURCE_DB_HOST_NAME ($db_name) and $BACKUP_TEST_DB_HOST_NAME ($TEMP_DB_NAME) are identical."
       wget --header='Content-Type:application/json' \
                 --post-data="{\"channel\": \"$CHANNEL\", \"username\": \"StandupBot\", \"text\": \"$MESSAGE\", \"icon_emoji\": \":scream:\"}" \
-                $WEBHOOK
+                $WEBHOOK  &>/dev/null || true
     fi
   else
     echo "WARNING: Schema differences found between $BACKUP_SOURCE_DB_HOST_NAME ($db_name) and $BACKUP_TEST_DB_HOST_NAME ($TEMP_DB_NAME):"
     echo "$schema_diff"
-    MESSAGE="WARNING! Schema differences found between $BACKUP_SOURCE_DB_HOST_NAME($db_name) and $BACKUP_TEST_DB_HOST_NAME($TEMP_DB_NAME) Please check!"
+    MESSAGE="WARNING! Schema differences found between $BACKUP_SOURCE_DB_HOST_NAME($db_name) and $BACKUP_TEST_DB_HOST_NAME($TEMP_DB_NAME)"
     wget --header='Content-Type:application/json' \
                 --post-data="{\"channel\": \"$CHANNEL\", \"username\": \"StandupBot\", \"text\": \"$MESSAGE\", \"icon_emoji\": \":scream:\"}" \
-                $WEBHOOK
+                $WEBHOOK  &>/dev/null || true
   fi
 
   # Sample data comparison using count(*) on random tables
@@ -96,20 +96,20 @@ compare_databases() {
     count1=$(psql -h $BACKUP_SOURCE_DB_HOST_NAME -U $POSTGRES_USER -d $db_name -q -t -c "SELECT count(*) FROM $table;")
     count2=$(psql -h $BACKUP_TEST_DB_HOST_NAME -U $POSTGRES_USER -d $TEMP_DB_NAME -q -t -c "SELECT count(*) FROM $table;")
     if [[ "$count1" != "$count2" ]]; then
-      echo "WARNING! backup integrity test error, Row count mismatch for table $table in $BACKUP_SOURCE_DB_HOST_NAME.$db_name ($count1) and $BACKUP_TEST_DB_HOST_NAME.$TEMP_DB_NAME ($count2)."
-      MESSAGE="WARNING backup integrity test error! Row count mismatch for table $table in $BACKUP_SOURCE_DB_HOST_NAME.$db_name($count1) and $BACKUP_TEST_DB_HOST_NAME.$TEMP_DB_NAME($count2)."
+      echo "WARNING! backup integrity test error, Row count mismatch for table $table in $BACKUP_SOURCE_DB_HOST_NAME.$db_name ($count1) and $BACKUP_TEST_DB_HOST_NAME.$TEMP_DB_NAME ($count2)"
+      MESSAGE="WARNING backup integrity test error Row count mismatch for table $table in $BACKUP_SOURCE_DB_HOST_NAME.$db_name($count1) and $BACKUP_TEST_DB_HOST_NAME.$TEMP_DB_NAME($count2)"
       wget --header='Content-Type:application/json' \
                 --post-data="{\"channel\": \"$CHANNEL\", \"username\": \"StandupBot\", \"text\": \"$MESSAGE\", \"icon_emoji\": \":scream:\"}" \
-                $WEBHOOK
+                $WEBHOOK &>/dev/null || true
     else
       echo "$dt - backup integrity test: Row count match for table $table in $BACKUP_SOURCE_DB_HOST_NAME - $db_name ($count1) and $BACKUP_TEST_DB_HOST_NAME - $TEMP_DB_NAME ($count2)."
      
       if [[ $LOG_LEVEL == "all" ]]; then
         # Add logic to send notification about successful/failed tests (modify as needed)
-        MESSAGE="Good! $table Row count match for $BACKUP_SOURCE_DB_HOST_NAME.$db_name($count1) and $BACKUP_TEST_DB_HOST_NAME.$TEMP_DB_NAME($count2)."
+        MESSAGE="Good! $table Row count match for $BACKUP_SOURCE_DB_HOST_NAME.$db_name($count1) and $BACKUP_TEST_DB_HOST_NAME.$TEMP_DB_NAME($count2)"
         wget --header='Content-Type:application/json' \
                 --post-data="{\"channel\": \"$CHANNEL\", \"username\": \"StandupBot\", \"text\": \"$MESSAGE\"}" \
-                $WEBHOOK
+                $WEBHOOK &>/dev/null || true
       fi
     fi
   done
@@ -152,7 +152,7 @@ test_backup() {
       MESSAGE="Backup integrity test, Backup $filename restored successfully."
       wget --header='Content-Type:application/json' \
                 --post-data="{\"channel\": \"$CHANNEL\", \"username\": \"StandupBot\", \"text\": \"$MESSAGE\", \"icon_emoji\": \":scream:\"}" \
-                $WEBHOOK
+                $WEBHOOK  &>/dev/null || true
     fi
     # Compare schema and data
     compare_databases $db_name $TEMP_DB_NAME
@@ -163,7 +163,7 @@ test_backup() {
     MESSAGE="ERROR! Failed to restore backup $filename."
     wget --header='Content-Type:application/json' \
                 --post-data="{\"channel\": \"$CHANNEL\", \"username\": \"StandupBot\", \"text\": \"$MESSAGE\", \"icon_emoji\": \":scream:\"}" \
-                $WEBHOOK
+                $WEBHOOK  &>/dev/null || true
   fi
 }
 
@@ -207,7 +207,7 @@ function perform_backups()
                 #curl -X POST -H 'Content-type: application/json' --data '{"text":"$MESSAGE"}' $WEBHOOK
                 wget --header='Content-Type:application/json' \
                 --post-data="{\"channel\": \"$CHANNEL\", \"username\": \"StandupBot\", \"text\": \"$MESSAGE\", \"icon_emoji\": \":scream:\"}" \
-                $WEBHOOK
+                $WEBHOOK  &>/dev/null || true
             else
                 echo "$dt - Starting DB backup of database $DBNAME into file: $FINAL_BACKUP_DIR";
                 echo "$dt - Running: pg_dump -h $BACKUP_SOURCE_DB_HOST_NAME -U $USER -O -Fp $DBNAME $EXCLUDED -f $FINAL_BACKUP_DIR"$filename".in_progres"
@@ -220,7 +220,7 @@ function perform_backups()
                     MESSAGE="$dt DB backup completed for database $DBNAME into $filename The size $filesize(ko)"
                     wget --header='Content-Type:application/json' \
                     --post-data="{\"channel\": \"$CHANNEL\", \"username\": \"StandupBot\", \"text\": \"$MESSAGE\", \"icon_emoji\": \":raised_hands:\"}" \
-                    $WEBHOOK
+                    $WEBHOOK  &>/dev/null || true
                 fi
                 # Test the backup before renaming it and append SUCCESS to the name
                 test_backup $filepath $DBNAME
@@ -254,7 +254,7 @@ cleanup() {
         echo "$dt - [!!ERROR!!] Failed to delete expired backups output: $OUTPUT"
         wget --header='Content-Type:application/json' \
         --post-data="{\"channel\": \"$CHANNEL\", \"username\": \"StandupBot\", \"text\": \"$MESSAGE\", \"icon_emoji\": \":scream:\"}" \
-                  $WEBHOOK
+                  $WEBHOOK  &>/dev/null || true
       fi
       # Find empty directories and delete them
       find "$dir_to_clean" -type d -empty -delete
@@ -266,7 +266,7 @@ cleanup() {
     #curl -X POST -H 'Content-type: application/json' --data '{"text":"$MESSAGE"}' $WEBHOOK
     wget --header='Content-Type:application/json' \
     --post-data="{\"channel\": \"$CHANNEL\", \"username\": \"StandupBot\", \"text\": \"$MESSAGE\", \"icon_emoji\": \":raised_hands:\"}" \
-    $WEBHOOK
+    $WEBHOOK  &>/dev/null || true
   fi
 }
 
