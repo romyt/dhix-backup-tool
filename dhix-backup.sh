@@ -274,7 +274,7 @@ cleanup() {
 # Main execution flow #
 #======================
 current_day_of_month=$(date +'%d')
-current_time=$(date +'%H:%M')
+current_time=$(date +'%H')
 
 # Check for monthly backups
 if [[ $current_day_of_month -eq 1 ]] && [[ $DAILY_BACKUP_TIME == $current_time ]]; then
@@ -303,7 +303,7 @@ if [[ $DAILY_BACKUP_TIME == $current_time ]] && [[ $day_of_week -ne 7 ]]; then  
 fi
 
 # Check for hourly backups
-if [[ $DAILY_BACKUP_TIME != $current_time ]]; then  # Corrected check for non-Sunday daily backups
+if [[ $DAILY_BACKUP_TIME != $current_time ]]; then # Execute backups everytime the program is run except at daily backup time
   perform_backups "hourly"
   cleanup "hourly"
 
