@@ -75,17 +75,13 @@ compare_databases() {
     if [[ $LOG_LEVEL == "all" ]]; then
       # Add logic to send notification about successful/failed tests (modify as needed)
       MESSAGE="Good! Schema of $BACKUP_SOURCE_DB_HOST_NAME ($db_name) and $BACKUP_TEST_DB_HOST_NAME ($TEMP_DB_NAME) are identical."
-      wget --header='Content-Type:application/json' \
-                --post-data="{\"channel\": \"$CHANNEL\", \"username\": \"StandupBot\", \"text\": \"$MESSAGE\", \"icon_emoji\": \":scream:\"}" \
-                $WEBHOOK  &>/dev/null || true
+      send_notification "$MESSAGE"
     fi
   else
     echo "WARNING: Schema differences found between $BACKUP_SOURCE_DB_HOST_NAME ($db_name) and $BACKUP_TEST_DB_HOST_NAME ($TEMP_DB_NAME):"
     echo "$schema_diff"
     MESSAGE="WARNING! Schema differences found between $BACKUP_SOURCE_DB_HOST_NAME($db_name) and $BACKUP_TEST_DB_HOST_NAME($TEMP_DB_NAME)"
-    wget --header='Content-Type:application/json' \
-                --post-data="{\"channel\": \"$CHANNEL\", \"username\": \"StandupBot\", \"text\": \"$MESSAGE\", \"icon_emoji\": \":scream:\"}" \
-                $WEBHOOK  &>/dev/null || true
+    send_notification "$MESSAGE"
   fi
 
   # Sample data comparison using count(*) on random tables
@@ -98,18 +94,14 @@ compare_databases() {
     if [[ "$count1" != "$count2" ]]; then
       echo "WARNING! backup integrity test error, Row count mismatch for table $table in $BACKUP_SOURCE_DB_HOST_NAME.$db_name ($count1) and $BACKUP_TEST_DB_HOST_NAME.$TEMP_DB_NAME ($count2)"
       MESSAGE="WARNING backup integrity test error Row count mismatch for table $table in $BACKUP_SOURCE_DB_HOST_NAME.$db_name($count1) and $BACKUP_TEST_DB_HOST_NAME.$TEMP_DB_NAME($count2)"
-      wget --header='Content-Type:application/json' \
-                --post-data="{\"channel\": \"$CHANNEL\", \"username\": \"StandupBot\", \"text\": \"$MESSAGE\", \"icon_emoji\": \":scream:\"}" \
-                $WEBHOOK &>/dev/null || true
+      send_notification "$MESSAGE"
     else
       echo "$dt - backup integrity test: Row count match for table $table in $BACKUP_SOURCE_DB_HOST_NAME - $db_name ($count1) and $BACKUP_TEST_DB_HOST_NAME - $TEMP_DB_NAME ($count2)."
      
       if [[ $LOG_LEVEL == "all" ]]; then
         # Add logic to send notification about successful/failed tests (modify as needed)
         MESSAGE="Good! $table Row count match for $BACKUP_SOURCE_DB_HOST_NAME.$db_name($count1) and $BACKUP_TEST_DB_HOST_NAME.$TEMP_DB_NAME($count2)"
-        wget --header='Content-Type:application/json' \
-                --post-data="{\"channel\": \"$CHANNEL\", \"username\": \"StandupBot\", \"text\": \"$MESSAGE\"}" \
-                $WEBHOOK &>/dev/null || true
+        send_notification "$MESSAGE"
       fi
     fi
   done
@@ -150,9 +142,7 @@ test_backup() {
     echo "Backup $filename restored successfully."
     if [ "$LOG_LEVEL" = "all" ]; then
       MESSAGE="Backup integrity test, Backup $filename restored successfully."
-      wget --header='Content-Type:application/json' \
-                --post-data="{\"channel\": \"$CHANNEL\", \"username\": \"StandupBot\", \"text\": \"$MESSAGE\", \"icon_emoji\": \":scream:\"}" \
-                $WEBHOOK  &>/dev/null || true
+      send_notification "$MESSAGE"
     fi
     # Compare schema and data
     compare_databases $db_name $TEMP_DB_NAME
@@ -161,9 +151,7 @@ test_backup() {
   else
     echo "ERROR: Failed to restore backup $filename!"
     MESSAGE="ERROR! Failed to restore backup $filename."
-    wget --header='Content-Type:application/json' \
-                --post-data="{\"channel\": \"$CHANNEL\", \"username\": \"StandupBot\", \"text\": \"$MESSAGE\", \"icon_emoji\": \":scream:\"}" \
-                $WEBHOOK  &>/dev/null || true
+    wsend_notification "$MESSAGE"
   fi
 }
 
@@ -203,11 +191,7 @@ function perform_backups()
             if ! pg_dump -h $BACKUP_SOURCE_DB_HOST_NAME -U $USER -O -Fp $DBNAME $EXCLUDED | gzip > $FINAL_BACKUP_DIR"$filename".in_progress; then
                 echo "$dt - [!!ERROR!!] Failed to produce compressed backup of database $DBNAME"
                 MESSAGE="$dt - [!!ERROR!!] Failed to produce compressed backup of database $DBNAME"
-                
-                #curl -X POST -H 'Content-type: application/json' --data '{"text":"$MESSAGE"}' $WEBHOOK
-                wget --header='Content-Type:application/json' \
-                --post-data="{\"channel\": \"$CHANNEL\", \"username\": \"StandupBot\", \"text\": \"$MESSAGE\", \"icon_emoji\": \":scream:\"}" \
-                $WEBHOOK  &>/dev/null || true
+                send_notification "$MESSAGE"
             else
                 echo "$dt - Starting DB backup of database $DBNAME into file: $FINAL_BACKUP_DIR";
                 echo "$dt - Running: pg_dump -h $BACKUP_SOURCE_DB_HOST_NAME -U $USER -O -Fp $DBNAME $EXCLUDED -f $FINAL_BACKUP_DIR"$filename".in_progres"
@@ -218,9 +202,7 @@ function perform_backups()
                 echo "$dt - DB backup completed for database $DBNAME into file: $filename";
                 if [ "$LOG_LEVEL" = "all" ]; then
                     MESSAGE="$dt DB backup completed for database $DBNAME into $filename The size $filesize(ko)"
-                    wget --header='Content-Type:application/json' \
-                    --post-data="{\"channel\": \"$CHANNEL\", \"username\": \"StandupBot\", \"text\": \"$MESSAGE\", \"icon_emoji\": \":raised_hands:\"}" \
-                    $WEBHOOK  &>/dev/null || true
+                    send_notification "$MESSAGE"
                 fi
                 # Test the backup before renaming it and append SUCCESS to the name
                 test_backup $filepath $DBNAME
@@ -234,13 +216,18 @@ function perform_backups()
 # Cleanup function with improved error handling      #
 #=====================================================
 cleanup() {
+  local prefix="$1"
+  local exp_days=$(expiration_days "$prefix")
+  echo "Cleaning up folder with prefix $prefix and expiration days $exp_days"
 
-  prefix="$1"
-  exp_days=$(expiration_days "$prefix")
-  echo "Cleaning up folder with prefix $prefix and expiration hours/days $exp_days"
-
+  # Get database list with better error handling
   DBLIST=$(psql -p 5432 -h $BACKUP_SOURCE_DB_HOST_NAME -U $POSTGRES_USER -d postgres -q -t -c \
-        "select datname from pg_database where not datistemplate" | grep '\S' | awk '{print $1}')
+    "select datname from pg_database where not datistemplate" 2>/dev/null | grep '\S' | awk '{print $1}')
+  
+  if [ -z "$DBLIST" ]; then
+    echo "Error: Could not retrieve database list or no databases found"
+    return 1
+  fi
 
   for DBNAME in $DBLIST; do
     if [[ "$DBNAME" != "postgres" ]]; then
@@ -248,41 +235,47 @@ cleanup() {
 
       # Check if the directory exists
       if [ ! -d "$dir_to_clean" ]; then
-          echo "Directory $dir_to_clean does not exist."
-          exit 1
+        echo "Warning: Directory $dir_to_clean does not exist. Skipping..."
+        continue
       fi
 
-      # Find and delete files older than expiration days in the specified directory
-      find "$dir_to_clean" -type f -mtime +"$exp_days" -name "*$prefix*" -exec rm {} \;
+      # Find and delete files older than expiration days
+      deleted_files=$(find "$dir_to_clean" -type f -mtime +"$exp_days" -name "*$prefix*" -print -delete 2>/dev/null | wc -l)
 
-      # Check if any files were deleted
-      if [ $? -eq 0 ]; then
-          echo "$prefix backups older than $exp_days days were deleted from $dir_to_clean."
-          if [ "$LOG_LEVEL" = "all" ]; then
-            MESSAGE="$prefix backups older than $exp_days days were deleted from $dir_to_clean."
-            #curl -X POST -H 'Content-type: application/json' --data '{"text":"$MESSAGE"}' $WEBHOOK
-            wget --header='Content-Type:application/json' \
-            --post-data="{\"channel\": \"$CHANNEL\", \"username\": \"StandupBot\", \"text\": \"$MESSAGE\", \"icon_emoji\": \":raised_hands:\"}" \
-            $WEBHOOK  &>/dev/null || true
-          fi
+      if [ "$deleted_files" -gt 0 ]; then
+        echo "Deleted $deleted_files $prefix backups older than $exp_days days from $dir_to_clean."
+        if [ "$LOG_LEVEL" = "all" ]; then
+          MESSAGE="Deleted $deleted_files $prefix backups older than $exp_days days from $DBNAME."
+          send_notification "$MESSAGE"
+        fi
       else
-          echo "No files older than $exp_days days found to delete in $dir_to_clean."
+        echo "No files older than $exp_days days found to delete in $dir_to_clean."
       fi
 
-      # Find and delete empty directories in the specified directory
-      find "$dir_to_clean" -type d -empty -exec rm -r {} \;
-
-      # Check if empty directories were deleted
-      if [ $? -eq 0 ]; then
-          echo "Empty directories have been deleted from $dir_to_clean."
-      else
-          echo "No empty directories have been deleted from $dir_to_clean."
+      # Delete empty directories
+      deleted_dirs=$(find "$dir_to_clean" -type d -empty -print -delete 2>/dev/null | wc -l)
+      
+      if [ "$deleted_dirs" -gt 0 ]; then
+        echo "Deleted $deleted_dirs empty directories from $dir_to_clean."
       fi
-      exit 0
-
     fi
   done
+}
 
+# Helper function for notifications
+send_notification() {
+  local message="$1"
+  if [ -n "$WEBHOOK" ]; then
+    if command -v curl &>/dev/null; then
+      curl -X POST -H 'Content-type: application/json' \
+        --data "{\"channel\": \"$CHANNEL\", \"username\": \"StandupBot\", \"text\": \"$message\", \"icon_emoji\": \":raised_hands:\"}" \
+        "$WEBHOOK" &>/dev/null || true
+    elif command -v wget &>/dev/null; then
+      wget --header='Content-Type:application/json' \
+        --post-data="{\"channel\": \"$CHANNEL\", \"username\": \"StandupBot\", \"text\": \"$message\", \"icon_emoji\": \":raised_hands:\"}" \
+        "$WEBHOOK" &>/dev/null || true
+    fi
+  fi
 }
 
 #======================
